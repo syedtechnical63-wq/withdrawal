@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Withdrawals</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial; background: #f4f7f6; padding: 20px; }
+        h1 { color: #333; }
+        .login-box { max-width: 350px; margin: 100px auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .login-box input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; }
+        .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.08); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+        th { background: #007bff; color: white; }
+        .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .pending { background: #fff3cd; color: #856404; }
+        .approved { background: #d4edda; color: #155724; }
+        .declined { background: #f8d7da; color: #721c24; }
+        .btn { padding: 6px 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 4px; }
+        .btn-approve { background: #28a745; color: white; }
+        .btn-decline { background: #dc3545; color: white; }
+        .details { font-size: 11px; color: #666; max-width: 250px; word-wrap: break-word; }
+        .logout { float: right; padding: 8px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="loginBox" class="login-box">
+    <h2>Admin Login</h2>
+    <input type="email" id="adminEmail" placeholder="Admin Email">
+    <input type="password" id="adminPass" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <p id="loginErr" style="color:red;font-size:13px;margin-top:8px;"></p>
+</div>
+
+<div id="adminPanel" style="display:none;">
+    <button class="logout" onclick="logout()">Logout</button>
+    <h1>Withdrawal Requests</h1>
+    <br>
+    <table id="requestsTable">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Country</th>
+                <th>Method</th>
+                <th>Details</th>
+                <th>Holder</th>
+                <th>Amount</th>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<script>
+    // ============ SAME SUPABASE CONFIG ============
+   const SUPABASE_URL = "https://dxzdmmzfopbljmivfkqx.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_hWPT7SK9NhIKadJjkuyu-Q_m4OZMeiL";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // =============================================
+
+    async function login() {
+        const email = document.getElementById('adminEmail').value;
+        const pass = document.getElementById('adminPass').value;
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password: pass });
+        if (error) {
+            document.getElementById('loginErr').textContent = error.message;
+            return;
+        }
+        showPanel();
+    }
+
+    async function logout() {
+        await supabaseClient.auth.signOut();
+        location.reload();
+    }
+
+    async function showPanel() {
+        document.getElementById('loginBox').style.display = 'none';
+        document.getElementById('adminPanel').style.display = 'block';
+        loadRequests();
+    }
+
+    async function loadRequests() {
+        const { data, error } = await supabaseClient
+            .from('withdrawal_requests')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) { alert(error.message); return; }
+
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        data.forEach(req => {
+            const tr = document.createElement('tr');
+            const detailsStr = Object.entries(req.account_details || {}).map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>');
+            tr.innerHTML = `
+                <td>${new Date(req.created_at).toLocaleString()}</td>
+                <td>${req.country}</td>
+                <td>${req.payment_method}</td>
+                <td class="details">${detailsStr}</td>
+                <td>${req.holder_name || '-'}</td>
+                <td>${req.amount}</td>
+                <td>${req.email}<br>${req.contact_phone}</td>
+                <td><span class="status ${req.status}">${req.status}</span></td>
+                <td>
+                    ${req.status === 'pending' ? `
+                        <button class="btn btn-approve" onclick="updateStatus(${req.id}, 'approved')">✓</button>
+                        <button class="btn btn-decline" onclick="updateStatus(${req.id}, 'declined')">✗</button>
+                    ` : '-'}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function updateStatus(id, status) {
+        const { error } = await supabaseClient
+            .from('withdrawal_requests')
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq('id', id);
+        if (error) { alert(error.message); return; }
+        loadRequests();
+    }
+
+    // Check if already logged in
+    supabaseClient.auth.getSession().then(({ data }) => {
+        if (data.session) showPanel();
+    });
+</script>
+</body>
+</html>
